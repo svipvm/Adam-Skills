@@ -71,6 +71,19 @@ When a user requests to create a Docker project, ask for:
 
 Then create all the necessary files with appropriate content based on the service requirements.
 
+## Mount Point Convention
+
+All Docker volume mount points should be placed in the operating system's `/opt/[project-name]` directory. This convention provides a standardized location for persistent data across different services and environments.
+
+When generating the `docker-compose.yml` file, use volume mappings like:
+```yaml
+volumes:
+  - /opt/{{PROJECT_NAME}}/data:/app/data
+  - /opt/{{PROJECT_NAME}}/logs:/app/logs
+```
+
+This ensures consistent storage location management and easier backup/restore operations.
+
 ## Template Variables
 
 When generating files, use these placeholder patterns:

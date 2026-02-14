@@ -84,6 +84,22 @@ volumes:
 
 This ensures consistent storage location management and easier backup/restore operations.
 
+## Port Exposure Requirement
+
+When deploying Docker services on a cloud server, you must explicitly expose the required ports to make the services accessible externally. This is done through the `ports` section in `docker-compose.yml`:
+
+```yaml
+ports:
+  - "8080:8080"  # Host port:Container port
+```
+
+The generated `README.md` should include a clear list of ports that need to be opened in the cloud server's security group (firewall):
+- **Service Port**: The port the application listens on inside the container
+- **Exposed Port**: The port mapped to the host for external access
+- **Protocol**: TCP or UDP (default is TCP)
+
+Users must configure their cloud provider's security group or firewall rules to allow traffic on these exposed ports, otherwise the service will not be accessible from outside the server.
+
 ## Template Variables
 
 When generating files, use these placeholder patterns:

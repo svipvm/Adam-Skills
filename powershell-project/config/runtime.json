@@ -1,0 +1,11 @@
+{
+  "port": 8080,
+  "timeout": 30000,
+  "logLevel": "Info",
+  "maxRetries": 3,
+  "mainScript": "src/main.ps1",
+  "processName": "myapp",
+  "enableWebServer": false,
+  "autoRestart": false,
+  "workingDirectory": "."
+}

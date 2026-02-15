@@ -1,0 +1,9 @@
+{
+  "ENV": "development",
+  "DEBUG": true,
+  "custom": {
+    "feature1": true,
+    "feature2": false,
+    "apiEndpoint": "http://localhost:8080/api"
+  }
+}

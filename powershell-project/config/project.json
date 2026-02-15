@@ -1,0 +1,9 @@
+{
+  "name": "my-powershell-project",
+  "version": "1.0.0",
+  "description": "A PowerShell project template",
+  "author": "Your Name",
+  "license": "MIT",
+  "mainScript": "src/main.ps1",
+  "homepage": "https://github.com/yourname/project"
+}

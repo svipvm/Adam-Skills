@@ -96,44 +96,98 @@ fi
 PROJECT_NAME="{{PROJECT_NAME}}"
 OPT_DIR="/opt/$PROJECT_NAME"
 
-echo -e "${COLOR_INFO}Starting $PROJECT_NAME...${COLOR_RESET}"
+# 检测是否为首次启动
+is_first_start() {
+    if [ ! -d "$OPT_DIR" ] || [ ! -f "$OPT_DIR/.initialized" ]; then
+        return 0  # 是首次启动
+    fi
+    return 1  # 不是首次启动
+}
 
-if [ ! -f .env ]; then
-    if [ -f .env.example ]; then
-        echo -e "${COLOR_INFO}Creating .env from .env.example...${COLOR_RESET}"
-        cp .env.example .env
-        echo -e "${COLOR_WARNING}Please edit .env file with your configuration!${COLOR_RESET}"
-    else
-        echo -e "${COLOR_ERROR}ERROR: .env file not found!${COLOR_RESET}"
+# 检查Docker容器是否存在（服务曾经启动过）
+is_service_existed() {
+    docker-compose ps -a --format "{{.Names}}" 2>/dev/null | grep -q "^{{PROJECT_NAME}}$"
+    return $?
+}
+
+echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
+echo -e "${COLOR_INFO}  $PROJECT_NAME 启动脚本${COLOR_RESET}"
+echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
+
+if is_first_start; then
+    echo -e "${COLOR_WARNING}首次启动检测：初始化所有运行环境...${COLOR_RESET}"
+
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            echo -e "${COLOR_INFO}创建 .env 配置文件...${COLOR_RESET}"
+            cp .env.example .env
+            echo -e "${COLOR_WARNING}请先编辑 .env 文件配置必要的参数！${COLOR_RESET}"
+            exit 1
+        else
+            echo -e "${COLOR_ERROR}错误: .env.example 文件不存在！${COLOR_RESET}"
+            exit 1
+        fi
+    fi
+
+    if [ -z "$SERVICE_PORT" ]; then
+        echo -e "${COLOR_ERROR}错误: SERVICE_PORT 未在 .env 中配置！${COLOR_RESET}"
         exit 1
     fi
+
+    echo -e "${COLOR_INFO}创建 /opt/$PROJECT_NAME 目录结构...${COLOR_RESET}"
+    mkdir -p "$OPT_DIR"/{config,data,logs}
+
+    if [ -d "config" ] && [ "$(ls -A config/)" ]; then
+        echo -e "${COLOR_INFO}复制配置文件到 $OPT_DIR/config/...${COLOR_RESET}"
+        cp -n config/* "$OPT_DIR/config/" 2>/dev/null || true
+    fi
+
+    echo -e "${COLOR_INFO}使用 ufw 开放端口...${COLOR_RESET}"
+    ufw allow $SERVICE_PORT/tcp 2>/dev/null || true
+
+    touch "$OPT_DIR/.initialized"
+    echo -e "${COLOR_SUCCESS}首次启动初始化完成！${COLOR_RESET}"
+    echo ""
+
+else
+    echo -e "${COLOR_INFO}二次启动检测：使用已有配置重启服务...${COLOR_RESET}"
+
+    if [ ! -f .env ]; then
+        if [ -f .env.example ]; then
+            echo -e "${COLOR_INFO}从模板恢复 .env 配置...${COLOR_RESET}"
+            cp .env.example .env
+        fi
+    fi
+
+    if [ -z "$SERVICE_PORT" ]; then
+        if [ -f "$OPT_DIR/.env" ]; then
+            echo -e "${COLOR_INFO}从已有配置恢复环境变量...${COLOR_RESET}"
+            source "$OPT_DIR/.env" 2>/dev/null || true
+        fi
+    fi
+
+    echo -e "${COLOR_INFO}检查 /opt/$PROJECT_NAME 目录结构...${COLOR_RESET}"
+    mkdir -p "$OPT_DIR"/{config,data,logs}
+
+    if [ -d "config" ] && [ "$(ls -A config/)" ]; then
+        echo -e "${COLOR_INFO}更新配置文件（保留已有配置）...${COLOR_RESET}"
+        cp -n config/* "$OPT_DIR/config/" 2>/dev/null || true
+    fi
+
+    echo -e "${COLOR_INFO}确保端口已开放...${COLOR_RESET}"
+    ufw allow $SERVICE_PORT/tcp 2>/dev/null || true
 fi
 
-if [ -z "$SERVICE_PORT" ]; then
-    echo -e "${COLOR_ERROR}ERROR: SERVICE_PORT not set in .env${COLOR_RESET}"
-    exit 1
-fi
-
-echo -e "${COLOR_INFO}Creating /opt/$PROJECT_NAME directory structure...${COLOR_RESET}"
-mkdir -p "$OPT_DIR"/{config,data,logs}
-
-if [ -d "config" ] && [ "$(ls -A config/)" ]; then
-    echo -e "${COLOR_INFO}Copying configuration files to $OPT_DIR/config...${COLOR_RESET}"
-    cp -n config/* "$OPT_DIR/config/" 2>/dev/null || true
-fi
-
-echo -e "${COLOR_INFO}Opening ports with ufw...${COLOR_RESET}"
-ufw allow $SERVICE_PORT/tcp 2>/dev/null || true
-
-echo -e "${COLOR_INFO}Starting Docker Compose services...${COLOR_RESET}"
+echo ""
+echo -e "${COLOR_INFO}启动 Docker Compose 服务...${COLOR_RESET}"
 docker-compose up -d
 
-echo -e "${COLOR_INFO}Waiting for services to be ready...${COLOR_RESET}"
+echo -e "${COLOR_INFO}等待服务就绪...${COLOR_RESET}"
 sleep 5
 
 echo ""
 echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
-echo -e "${COLOR_BOLD}${COLOR_SUCCESS}$PROJECT_NAME started successfully!${COLOR_RESET}"
+echo -e "${COLOR_BOLD}${COLOR_SUCCESS}  $PROJECT_NAME 启动成功！${COLOR_RESET}"
 echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
 echo ""
 echo -e "${COLOR_ACCENT}服务访问地址:${COLOR_RESET}"
@@ -162,7 +216,7 @@ echo -e "  ${COLOR_MUTED}./restart.sh  - 重启服务${COLOR_RESET}"
 echo -e "  ${COLOR_MUTED}./logs.sh     - 查看日志${COLOR_RESET}"
 echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
 echo ""
-echo -e "${COLOR_INFO}Services:${COLOR_RESET}"
+echo -e "${COLOR_INFO}运行中的服务:${COLOR_RESET}"
 docker-compose ps
 ```
 
@@ -200,32 +254,43 @@ else
 fi
 
 PROJECT_NAME="{{PROJECT_NAME}}"
+OPT_DIR="/opt/$PROJECT_NAME"
 
-echo -e "${COLOR_INFO}Stopping $PROJECT_NAME...${COLOR_RESET}"
+echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
+echo -e "${COLOR_INFO}  $PROJECT_NAME 停止脚本${COLOR_RESET}"
+echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
 
-read -p "Do you want to remove containers? [y/N] " -n 1 -r
+echo -e "${COLOR_INFO}正在停止 $PROJECT_NAME...${COLOR_RESET}"
+
+read -p "是否移除容器？[y/N] " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${COLOR_INFO}Removing containers...${COLOR_RESET}"
+    echo -e "${COLOR_INFO}移除容器中...${COLOR_RESET}"
     docker-compose down
+    echo -e "${COLOR_SUCCESS}容器已移除${COLOR_RESET}"
 else
-    echo -e "${COLOR_INFO}Stopping services...${COLOR_RESET}"
+    echo -e "${COLOR_INFO}停止服务中...${COLOR_RESET}"
     docker-compose stop
+    echo -e "${COLOR_SUCCESS}服务已停止${COLOR_RESET}"
 fi
 
-read -p "Do you want to remove volumes? [y/N] " -n 1 -r
+read -p "是否移除数据卷？[y/N] " -n 1 -r
 echo
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${COLOR_WARNING}WARNING: This will delete all data!${COLOR_RESET}"
-    read -p "Are you sure? [y/N] " -n 1 -r
+    echo -e "${COLOR_WARNING}警告：这将删除所有数据！${COLOR_RESET}"
+    read -p "确定要删除吗？[y/N] " -n 1 -r
     echo
     if [[ $REPLY =~ ^[Yy]$ ]]; then
         docker-compose down -v
-        echo -e "${COLOR_SUCCESS}Volumes removed.${COLOR_RESET}"
+        rm -f "$OPT_DIR/.initialized" 2>/dev/null || true
+        echo -e "${COLOR_SUCCESS}数据卷已移除${COLOR_RESET}"
     fi
 fi
 
-echo -e "${COLOR_SUCCESS}$PROJECT_NAME stopped.${COLOR_RESET}"
+echo -e "${COLOR_SUCCESS}$PROJECT_NAME 已停止${COLOR_RESET}"
+echo ""
+echo -e "${COLOR_INFO}注意：/opt/$PROJECT_NAME 目录下的配置和数据依然保留${COLOR_RESET}"
+echo -e "${COLOR_INFO}下次启动时将自动使用已有配置${COLOR_RESET}"
 ```
 
 ## restart.sh
@@ -251,7 +316,7 @@ else
     COLOR_RESET='' COLOR_INFO=''
 fi
 
-echo -e "${COLOR_INFO}Restarting service...${COLOR_RESET}"
+echo -e "${COLOR_INFO}重启服务中...${COLOR_RESET}"
 
 ./stop.sh
 echo ""
@@ -283,10 +348,10 @@ else
 fi
 
 if [ -z "$1" ]; then
-    echo -e "${COLOR_INFO}Following logs for $PROJECT_NAME... (Ctrl+C to exit)${COLOR_RESET}"
+    echo -e "${COLOR_INFO}正在跟踪 $PROJECT_NAME 的日志... (按 Ctrl+C 退出)${COLOR_RESET}"
     docker-compose logs -f
 else
-    echo -e "${COLOR_INFO}Showing last $1 lines of logs for $PROJECT_NAME...${COLOR_RESET}"
+    echo -e "${COLOR_INFO}显示 $PROJECT_NAME 最近 $1 行日志...${COLOR_RESET}"
     docker-compose logs -f --tail="$1"
 fi
 ```
@@ -326,23 +391,44 @@ TIMESTAMP=$(date +%Y%m%d_%H%M%S)
 
 mkdir -p "$BACKUP_DIR"
 
-echo -e "${COLOR_INFO}Creating backup of $PROJECT_NAME...${COLOR_RESET}"
+echo -e "${COLOR_INFO}正在创建 $PROJECT_NAME 的备份...${COLOR_RESET}"
 
 docker-compose exec -T {{SERVICE_NAME}} tar czf - /app/data > "$BACKUP_DIR/data_$TIMESTAMP.tar.gz"
 
-echo -e "${COLOR_SUCCESS}Backup created: $BACKUP_DIR/data_$TIMESTAMP.tar.gz${COLOR_RESET}"
+echo -e "${COLOR_SUCCESS}备份已创建: $BACKUP_DIR/data_$TIMESTAMP.tar.gz${COLOR_RESET}"
 ```
 
 ## 常用命令
 
 | 命令 | 说明 |
 |------|------|
-| `./start.sh` | 启动服务 |
+| `./start.sh` | 启动服务（首次初始化/二次启动） |
 | `./stop.sh` | 停止服务 |
 | `./restart.sh` | 重启服务 |
 | `./logs.sh` | 查看日志 |
 | `./logs.sh 100` | 查看最近100行日志 |
 | `./backup.sh` | 备份数据 |
+
+## 首次启动 vs 二次启动
+
+### 首次启动（初始化）
+- 检测到 `/opt/$PROJECT_NAME/.initialized` 文件不存在
+- 创建目录结构：config、data、logs
+- 复制配置文件到 `/opt/$PROJECT_NAME/config/`
+- 使用 ufw 开放端口
+- 创建 `.initialized` 标记文件
+
+### 二次启动（重启）
+- 检测到 `/opt/$PROJECT_NAME/.initialized` 文件存在
+- 复用已有的配置和数据
+- 确保目录结构完整
+- 重新启动 Docker 容器
+- 不删除任何已有数据
+
+### 停止服务
+- 保留 `/opt/$PROJECT_NAME` 目录下的所有配置和数据
+- 下次启动时自动使用已有配置
+- 可选择是否删除 Docker 容器和数据卷
 
 ## 主题配色说明
 

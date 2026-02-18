@@ -1,7 +1,7 @@
 ---
 name: "docker-project"
 description: "创建标准化Docker项目结构，包含配置模板、环境变量、Compose和管理脚本。Invoke when用户需要创建新的Docker部署项目或设置容器化服务。"
-version: "1.0.1"
+version: "1.0.2"
 includes:
   - includes/compose-templates.md
   - includes/script-templates.md
@@ -26,7 +26,7 @@ performance:
 2. **配置管理** - 环境变量模板和配置文件管理
 3. **自动化脚本** - 智能启动/停止脚本，支持首次和二次启动
 4. **挂载点规范** - 所有数据存储在 `/opt/<project-name>/`
-5. **端口管理** - 自动使用 ufw 开放端口
+5. **端口管理** - 自动使用 iptables 开放端口
 6. **主题美化** - 彩色终端输出，友好用户体验
 
 ## 快速开始
@@ -93,7 +93,7 @@ volumes:
 
 ## 端口暴露要求
 
-在云服务器上部署时，需要使用 `ufw` 工具开放端口：
+在云服务器上部署时，需要使用 `iptables` 工具开放端口：
 
 1. 在 `docker-compose.yml` 中明确暴露端口：
 ```yaml
@@ -101,9 +101,9 @@ ports:
   - "8080:8080"
 ```
 
-2. 在 `start.sh` 中使用 `ufw` 开放端口（需要外部访问的端口）：
+2. 在 `start.sh` 中使用 `iptables` 开放端口（需要外部访问的端口）：
 ```bash
-ufw allow 8080/tcp
+iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
 ```
 
 3. 在 README.md 中说明需要在云安全组中开放的端口。
@@ -117,7 +117,7 @@ ufw allow 8080/tcp
 - 如不存在，则执行完整初始化：
   - 创建 `/opt/<project-name>/{config,data,logs}` 目录结构
   - 复制配置文件到 `/opt/<project-name>/config/`
-  - 使用 `ufw` 开放端口
+  - 使用 `iptables` 开放端口
   - 创建 `.initialized` 标记文件
 
 ### 二次启动（重启）

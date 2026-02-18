@@ -142,8 +142,8 @@ if is_first_start; then
         cp -n config/* "$OPT_DIR/config/" 2>/dev/null || true
     fi
 
-    echo -e "${COLOR_INFO}使用 ufw 开放端口...${COLOR_RESET}"
-    ufw allow $SERVICE_PORT/tcp 2>/dev/null || true
+    echo -e "${COLOR_INFO}使用 iptables 开放端口...${COLOR_RESET}"
+    iptables -I INPUT -p tcp --dport $SERVICE_PORT -j ACCEPT 2>/dev/null || true
 
     touch "$OPT_DIR/.initialized"
     echo -e "${COLOR_SUCCESS}首次启动初始化完成！${COLOR_RESET}"
@@ -175,7 +175,7 @@ else
     fi
 
     echo -e "${COLOR_INFO}确保端口已开放...${COLOR_RESET}"
-    ufw allow $SERVICE_PORT/tcp 2>/dev/null || true
+    iptables -I INPUT -p tcp --dport $SERVICE_PORT -j ACCEPT 2>/dev/null || true
 fi
 
 echo ""
@@ -272,19 +272,6 @@ else
     echo -e "${COLOR_INFO}停止服务中...${COLOR_RESET}"
     docker-compose stop
     echo -e "${COLOR_SUCCESS}服务已停止${COLOR_RESET}"
-fi
-
-read -p "是否移除数据卷？[y/N] " -n 1 -r
-echo
-if [[ $REPLY =~ ^[Yy]$ ]]; then
-    echo -e "${COLOR_WARNING}警告：这将删除所有数据！${COLOR_RESET}"
-    read -p "确定要删除吗？[y/N] " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        docker-compose down -v
-        rm -f "$OPT_DIR/.initialized" 2>/dev/null || true
-        echo -e "${COLOR_SUCCESS}数据卷已移除${COLOR_RESET}"
-    fi
 fi
 
 echo -e "${COLOR_SUCCESS}$PROJECT_NAME 已停止${COLOR_RESET}"
@@ -415,7 +402,7 @@ echo -e "${COLOR_SUCCESS}备份已创建: $BACKUP_DIR/data_$TIMESTAMP.tar.gz${CO
 - 检测到 `/opt/$PROJECT_NAME/.initialized` 文件不存在
 - 创建目录结构：config、data、logs
 - 复制配置文件到 `/opt/$PROJECT_NAME/config/`
-- 使用 ufw 开放端口
+- 使用 iptables 开放端口
 - 创建 `.initialized` 标记文件
 
 ### 二次启动（重启）
@@ -428,7 +415,7 @@ echo -e "${COLOR_SUCCESS}备份已创建: $BACKUP_DIR/data_$TIMESTAMP.tar.gz${CO
 ### 停止服务
 - 保留 `/opt/$PROJECT_NAME` 目录下的所有配置和数据
 - 下次启动时自动使用已有配置
-- 可选择是否删除 Docker 容器和数据卷
+- 可选择是否删除 Docker 容器
 
 ## 主题配色说明
 

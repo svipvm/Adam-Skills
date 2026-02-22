@@ -178,12 +178,43 @@ else
     iptables -I INPUT -p tcp --dport $SERVICE_PORT -j ACCEPT 2>/dev/null || true
 fi
 
+wait_for_healthy() {
+    local container_name="{{PROJECT_NAME}}"
+    local max_wait=60
+    local interval=3
+    local waited=0
+
+    echo -e "${COLOR_INFO}等待服务健康检查通过...${COLOR_RESET}"
+
+    while [ $waited -lt $max_wait ]; do
+        local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null || echo "none")
+
+        if [ "$health_status" = "healthy" ]; then
+            echo -e "${COLOR_SUCCESS}服务健康检查通过！${COLOR_RESET}"
+            return 0
+        elif [ "$health_status" = "none" ]; then
+            local state=$(docker inspect --format='{{.State.Status}}' "$container_name" 2>/dev/null || echo "unknown")
+            if [ "$state" = "running" ]; then
+                echo -e "${COLOR_SUCCESS}服务已启动（无健康检查）！${COLOR_RESET}"
+                return 0
+            fi
+        fi
+
+        echo -n "."
+        sleep $interval
+        waited=$((waited + interval))
+    done
+
+    echo ""
+    echo -e "${COLOR_WARNING}健康检查超时，服务可能仍在启动中${COLOR_RESET}"
+    return 1
+}
+
 echo ""
 echo -e "${COLOR_INFO}启动 Docker Compose 服务...${COLOR_RESET}"
 docker-compose up -d
 
-echo -e "${COLOR_INFO}等待服务就绪...${COLOR_RESET}"
-sleep 5
+wait_for_healthy
 
 echo ""
 echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"

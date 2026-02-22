@@ -1,7 +1,7 @@
 ---
 name: "docker-project"
 description: "创建标准化Docker项目结构，包含配置模板、环境变量、Compose和管理脚本。Invoke when用户需要创建新的Docker部署项目或设置容器化服务。"
-version: "1.0.2"
+version: "1.0.3"
 includes:
   - includes/compose-templates.md
   - includes/script-templates.md
@@ -98,7 +98,7 @@ volumes:
 1. 在 `docker-compose.yml` 中明确暴露端口：
 ```yaml
 ports:
-  - "8080:8080"
+  - "8080:8080"   # 主机端口:容器端口
 ```
 
 2. 在 `start.sh` 中使用 `iptables` 开放端口（需要外部访问的端口）：
@@ -107,6 +107,97 @@ iptables -I INPUT -p tcp --dport 8080 -j ACCEPT
 ```
 
 3. 在 README.md 中说明需要在云安全组中开放的端口。
+
+### 端口暴露规范
+
+所有生成的 `docker-compose.yml` 文件必须明确声明端口映射，格式为 `"主机端口:容器端口"`。
+
+示例：
+```yaml
+ports:
+  - "80:8080"     # HTTP服务 - 主机80映射到容器8080
+  - "443:8443"   # HTTPS服务 - 主机443映射到容器8443
+  - "5432:5432"  # PostgreSQL数据库
+  - "6379:6379"  # Redis缓存
+```
+
+## Healthcheck 要求
+
+所有 Docker 容器都必须配置健康检查（healthcheck），用于检测服务是否正常运行。
+
+### 必需配置
+
+在 `docker-compose.yml` 中添加 healthcheck 配置：
+
+```yaml
+services:
+  {{SERVICE_NAME}}:
+    image: {{IMAGE}}
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:{{CONTAINER_PORT}}/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+```
+
+### 常用健康检查命令
+
+| 服务类型 | 检查命令 |
+|----------|----------|
+| HTTP 服务 | `curl -f http://localhost:端口/health` |
+| PostgreSQL | `pg_isready -U postgres` |
+| MySQL | `mysqladmin ping -h localhost` |
+| Redis | `redis-cli ping` |
+| 通用 TCP | `nc -z localhost 端口` |
+
+### 启动脚本集成
+
+`start.sh` 必须在启动容器后等待健康检查通过，使用内置的 `wait_for_healthy` 函数：
+
+```bash
+wait_for_healthy() {
+    local container_name="{{PROJECT_NAME}}"
+    local max_wait=60
+
+    while [ $max_wait -gt 0 ]; do
+        local health_status=$(docker inspect --format='{{.State.Health.Status}}' "$container_name" 2>/dev/null)
+        if [ "$health_status" = "healthy" ]; then
+            echo "服务健康检查通过！"
+            return 0
+        fi
+        sleep 3
+        max_wait=$((max_wait - 3))
+    done
+    echo "健康检查超时"
+    return 1
+}
+
+docker-compose up -d
+wait_for_healthy
+```
+
+### 依赖服务健康检查
+
+当服务依赖其他服务（如数据库）时，使用 `depends_on` 的 `condition: service_healthy` 选项：
+
+```yaml
+services:
+  app:
+    image: myapp
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      ...
+
+  db:
+    image: postgres
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      ...
+```
 
 ## 启动脚本要求
 

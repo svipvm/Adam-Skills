@@ -110,9 +110,100 @@ is_service_existed() {
     return $?
 }
 
+# 检查systemd service是否存在
+check_systemd_service() {
+    local service_name="{{PROJECT_NAME}}.service"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+        return 0  # 存在
+    fi
+    return 1  # 不存在
+}
+
+# 安装systemd service（如果需要）
+install_systemd_service() {
+    local service_name="{{PROJECT_NAME}}.service"
+    local service_file="/etc/systemd/system/$service_name"
+
+    if [ -f "./$service_name" ]; then
+        echo -e "${COLOR_INFO}检测到 systemd service 配置文件，正在安装...${COLOR_RESET}"
+        sudo cp "./$service_file" "$service_file"
+        sudo systemctl daemon-reload
+        sudo systemctl enable "$service_name"
+        echo -e "${COLOR_SUCCESS}systemd service 已安装并启用${COLOR_RESET}"
+        return 0
+    fi
+    return 1
+}
+
+# 通过systemd启动服务
+start_via_systemd() {
+    local service_name="{{PROJECT_NAME}}.service"
+    echo -e "${COLOR_INFO}通过 systemd 启动服务...${COLOR_RESET}"
+    sudo systemctl start "$service_name"
+    sleep 3
+
+    if sudo systemctl is-active --quiet "$service_name"; then
+        echo -e "${COLOR_SUCCESS}服务启动成功${COLOR_RESET}"
+        return 0
+    else
+        echo -e "${COLOR_ERROR}服务启动失败${COLOR_RESET}"
+        return 1
+    fi
+}
+
+# 等待挂载资源就绪
+wait_for_mount() {
+    local mount_path="{{MOUNT_PATH}}"
+    if [ -z "$mount_path" ] || [ "$mount_path" = "{{MOUNT_PATH}}" ]; then
+        return 0
+    fi
+
+    if mountpoint -q "$mount_path" 2>/dev/null; then
+        echo -e "${COLOR_SUCCESS}挂载点 $mount_path 已就绪${COLOR_RESET}"
+        return 0
+    fi
+
+    echo -e "${COLOR_INFO}等待挂载点 $mount_path 就绪...${COLOR_RESET}"
+    local max_wait=30
+    local waited=0
+    while [ $waited -lt $max_wait ]; do
+        if mountpoint -q "$mount_path" 2>/dev/null; then
+            echo -e "${COLOR_SUCCESS}挂载点 $mount_path 已就绪${COLOR_RESET}"
+            return 0
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    echo -e "${COLOR_WARNING}等待挂载点超时，将继续尝试启动${COLOR_RESET}"
+    return 1
+}
+
 echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
 echo -e "${COLOR_INFO}  $PROJECT_NAME 启动脚本${COLOR_RESET}"
 echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
+
+# 检测并处理systemd service
+if check_systemd_service; then
+    echo -e "${COLOR_INFO}检测到 systemd service，正在启动...${COLOR_RESET}"
+    wait_for_mount
+    start_via_systemd
+
+    echo ""
+    echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
+    echo -e "${COLOR_BOLD}${COLOR_SUCCESS}  $PROJECT_NAME 启动成功！${COLOR_RESET}"
+    echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
+    echo ""
+    echo -e "${COLOR_ACCENT}服务访问地址:${COLOR_RESET}"
+    echo -e "  ${COLOR_HIGHLIGHT}http://localhost:$SERVICE_PORT${COLOR_RESET}"
+    echo ""
+    echo -e "${COLOR_ACCENT}systemd 命令:${COLOR_RESET}"
+    echo -e "  ${COLOR_MUTED}sudo systemctl start {{PROJECT_NAME}}.service${COLOR_RESET}"
+    echo -e "  ${COLOR_MUTED}sudo systemctl stop {{PROJECT_NAME}}.service${COLOR_RESET}"
+    echo -e "  ${COLOR_MUTED}sudo systemctl status {{PROJECT_NAME}}.service${COLOR_RESET}"
+    echo -e "${COLOR_BOLD}${COLOR_SUCCESS}==========================================${COLOR_RESET}"
+    exit 0
+fi
 
 if is_first_start; then
     echo -e "${COLOR_WARNING}首次启动检测：初始化所有运行环境...${COLOR_RESET}"
@@ -287,9 +378,37 @@ fi
 PROJECT_NAME="{{PROJECT_NAME}}"
 OPT_DIR="/opt/$PROJECT_NAME"
 
+check_systemd_service() {
+    local service_name="{{PROJECT_NAME}}.service"
+    if systemctl list-unit-files 2>/dev/null | grep -q "^${service_name}"; then
+        return 0
+    fi
+    return 1
+}
+
+stop_via_systemd() {
+    local service_name="{{PROJECT_NAME}}.service"
+    echo -e "${COLOR_INFO}通过 systemd 停止服务...${COLOR_RESET}"
+    sudo systemctl stop "$service_name"
+    echo -e "${COLOR_SUCCESS}服务已停止${COLOR_RESET}"
+}
+
 echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
 echo -e "${COLOR_INFO}  $PROJECT_NAME 停止脚本${COLOR_RESET}"
 echo -e "${COLOR_INFO}==========================================${COLOR_RESET}"
+
+if check_systemd_service; then
+    echo -e "${COLOR_INFO}检测到 systemd service${COLOR_RESET}"
+    read -p "是否停止服务？[y/N] " -n 1 -r
+    echo
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        stop_via_systemd
+        echo -e "${COLOR_SUCCESS}$PROJECT_NAME 已停止${COLOR_RESET}"
+    else
+        echo -e "${COLOR_INFO}取消操作${COLOR_RESET}"
+    fi
+    exit 0
+fi
 
 echo -e "${COLOR_INFO}正在停止 $PROJECT_NAME...${COLOR_RESET}"
 

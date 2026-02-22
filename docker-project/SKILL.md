@@ -1,12 +1,13 @@
 ---
 name: "docker-project"
 description: "创建标准化Docker项目结构，包含配置模板、环境变量、Compose和管理脚本。Invoke when用户需要创建新的Docker部署项目或设置容器化服务。"
-version: "1.0.3"
+version: "1.0.4"
 includes:
   - includes/compose-templates.md
   - includes/script-templates.md
   - includes/env-templates.md
   - includes/gitignore-templates.md
+  - includes/systemd-templates.md
 context:
   - context/examples.md
 performance:
@@ -199,6 +200,73 @@ services:
       ...
 ```
 
+## Systemd 依赖启动要求
+
+当 Docker 服务需要挂载外部硬盘或其他需要系统检测的资源时，需要使用 systemd 来管理服务的启动顺序，确保在机器重启后，所需资源先被系统检测/挂载，然后再启动 Docker 服务。
+
+### 适用场景
+
+- 使用外部硬盘存储数据
+- 使用网络存储（NFS、CIFS）
+- 需要在系统启动后等待特定设备就绪
+
+### 实现方式
+
+1. **创建 systemd service 文件**：在项目根目录创建 `{{PROJECT_NAME}}.service` 文件
+2. **自动检测**：start.sh 和 stop.sh 会自动检测是否存在 systemd service
+3. **挂载等待**：启动前等待挂载点就绪
+
+### Systemd Service 模板
+
+```ini
+[Unit]
+Description={{PROJECT_NAME}} Docker Service
+After=network.target
+Wants=network.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory={{PROJECT_DIR}}
+
+ExecStartPre=/bin/bash -c 'until mountpoint -q {{MOUNT_PATH}}; do sleep 1; done'
+ExecStart=/usr/bin/docker-compose up -d
+ExecStop=/usr/bin/docker-compose stop
+ExecRestart=/usr/bin/docker-compose restart
+
+[Install]
+WantedBy=multi-user.target
+```
+
+### 脚本自动处理逻辑
+
+start.sh 和 stop.sh 会自动检测是否存在 systemd service：
+
+1. **检测函数** `check_systemd_service()`：检查 systemd service 是否已安装
+2. **挂载等待** `wait_for_mount()`：等待挂载点就绪后再启动
+3. **systemd 启动** `start_via_systemd()`：通过 systemctl 启动服务
+4. **自动切换**：检测到 systemd service 时自动使用 systemd 方式，未检测到时使用 docker-compose 直接启动
+
+### 安装 systemd service
+
+如果项目目录中存在 `.service` 文件，可以手动安装：
+
+```bash
+sudo cp {{PROJECT_NAME}}.service /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable {{PROJECT_NAME}}.service
+```
+
+### 常用命令
+
+| 命令 | 说明 |
+|------|------|
+| `sudo systemctl start {{PROJECT_NAME}}.service` | 启动服务 |
+| `sudo systemctl stop {{PROJECT_NAME}}.service` | 停止服务 |
+| `sudo systemctl restart {{PROJECT_NAME}}.service` | 重启服务 |
+| `sudo systemctl status {{PROJECT_NAME}}.service` | 查看状态 |
+| `journalctl -u {{PROJECT_NAME}}.service -f` | 查看日志 |
+
 ## 启动脚本要求
 
 `start.sh` 脚本需要支持**首次启动**和**二次启动**两种模式：
@@ -243,5 +311,6 @@ services:
 - [includes/script-templates.md](includes/script-templates.md) - 脚本模板
 - [includes/env-templates.md](includes/env-templates.md) - 环境变量模板
 - [includes/gitignore-templates.md](includes/gitignore-templates.md) - Gitignore 模板
+- [includes/systemd-templates.md](includes/systemd-templates.md) - Systemd Service 模板
 - [context/examples.md](context/examples.md) - 使用示例
 - [types/docker-types.ts](types/docker-types.ts) - 类型定义

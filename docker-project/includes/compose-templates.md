@@ -128,6 +128,35 @@ networks:
 | `{{HOST_PORT}}` | 主机端口 | 8080 |
 | `{{CONTAINER_PORT}}` | 容器端口 | 80 |
 | `{{ENV_VARS}}` | 环境变量 | NODE_ENV=production |
+| `{{MOUNT_PATH}}` | 挂载路径 | /mnt/data |
+
+## 硬盘挂载配置
+
+当 Docker 服务需要使用外部硬盘或其他需要系统检测的资源时，需要配置挂载点。
+
+### 基本挂载配置
+
+```yaml
+services:
+  {{SERVICE_NAME}}:
+    image: {{IMAGE}}
+    volumes:
+      - /mnt/data/{{PROJECT_NAME}}:/app/data
+      - /opt/{{PROJECT_NAME}}/config:/app/config
+```
+
+### 多硬盘挂载配置
+
+```yaml
+services:
+  {{SERVICE_NAME}}:
+    image: {{IMAGE}}
+    volumes:
+      - /mnt/data/{{PROJECT_NAME}}:/app/data
+      - /mnt/logs/{{PROJECT_NAME}}:/app/logs
+      - /mnt/backup/{{PROJECT_NAME}}:/app/backup
+      - /opt/{{PROJECT_NAME}}/config:/app/config
+```
 
 ## Healthcheck 说明
 
